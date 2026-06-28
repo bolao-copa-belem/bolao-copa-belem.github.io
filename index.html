@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Bolão Copa 2026 · Ranking ao vivo</title>
+  <meta name="description" content="Ranking ao vivo do Bolão da Copa do Mundo 2026 — cruzamento de palpites e resultados em tempo real." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">🏆</span>
+      <div>
+        <h1>Bolão <strong>Copa 2026</strong></h1>
+        <span class="brand-sub">Ranking ao vivo</span>
+      </div>
+    </div>
+    <div id="atualizado" class="live-chip">carregando…</div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-aba="hoje" class="ativo">🔥 Hoje</button>
+    <button data-aba="ranking">🏅 Ranking</button>
+    <button data-aba="jogos">⚽ Jogos</button>
+    <button data-aba="participante">👤 Palpites</button>
+    <button data-aba="comparar">🆚 Comparar</button>
+    <button data-aba="master">⭐ Master</button>
+    <button data-aba="regras">📜 Regras</button>
+  </nav>
+
+  <main id="app">
+    <div class="loading">Carregando dados do bolão…</div>
+  </main>
+
+  <footer class="rodape">
+    <span><strong>Pontuação</strong> — Fase de grupos: 5 (placar exato) · 2 (acertou o vencedor). Mata-mata: 8 · 4. Campeão e artilheiro: 5 cada.</span>
+    <span>No mata-mata vale o placar dos 90 minutos + acréscimos (prorrogação e pênaltis não contam).</span>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

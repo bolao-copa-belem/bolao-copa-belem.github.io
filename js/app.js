@@ -1,0 +1,571 @@
+'use strict';
+/* Bolão Copa 2026 — app estático. Dados em /data, resultados ao vivo via ESPN. */
+
+const $ = (s, r = document) => r.querySelector(s);
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; };
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
+
+const estado = { jogos: [], palpites: [], resultados: { grupos: {}, master: {} }, matamata: null,
+  tabela: [], aba: 'hoje', aoVivo: {}, sel: { p: null, a: null, b: null, scope: 'consolidado' } };
+
+const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719';
+const INTERVALO = 60000;
+
+const FASE_LABEL = { grupos: 'Fase de grupos', '32avos': '32-avos de final', '16avos': '16-avos de final',
+  oitavas: 'Oitavas de final', quartas: 'Quartas de final', semis: 'Semifinais', terceiro: 'Disputa de 3º lugar', final: 'Final' };
+const FASE_CURTA = { grupos: 'Grupos', '32avos': '32-avos', '16avos': '16-avos', oitavas: 'Oitavas',
+  quartas: 'Quartas', semis: 'Semis', terceiro: '3º lugar', final: 'Final' };
+const ORDEM_MATA = ['32avos', '16avos', 'oitavas', 'quartas', 'semis', 'terceiro', 'final'];
+
+const TIME_EN_PT = {
+  mexico:'México', southafrica:'África do Sul', southkorea:'Coreia do Sul', korearepublic:'Coreia do Sul',
+  czechrepublic:'República Tcheca', czechia:'República Tcheca', canada:'Canadá', qatar:'Catar',
+  switzerland:'Suíça', bosniaherzegovina:'Bósnia e Herzegovina', bosniaandherzegovina:'Bósnia e Herzegovina',
+  brazil:'Brasil', morocco:'Marrocos', haiti:'Haiti', scotland:'Escócia',
+  usa:'Estados Unidos', unitedstates:'Estados Unidos', paraguay:'Paraguai', australia:'Austrália',
+  turkey:'Turquia', turkiye:'Turquia', germany:'Alemanha', curacao:'Curaçao',
+  ivorycoast:'Costa do Marfim', cotedivoire:'Costa do Marfim', ecuador:'Equador',
+  netherlands:'Holanda', japan:'Japão', tunisia:'Tunísia', sweden:'Suécia',
+  belgium:'Bélgica', egypt:'Egito', iran:'Irã', iriran:'Irã', newzealand:'Nova Zelândia',
+  spain:'Espanha', capeverde:'Cabo Verde', saudiarabia:'Arábia Saudita', uruguay:'Uruguai',
+  france:'França', senegal:'Senegal', norway:'Noruega', iraq:'Iraque',
+  argentina:'Argentina', algeria:'Argélia', austria:'Áustria', jordan:'Jordânia',
+  portugal:'Portugal', uzbekistan:'Uzbequistão', colombia:'Colômbia',
+  drcongo:'RD Congo', congodr:'RD Congo', democraticrepublicofcongo:'RD Congo',
+  england:'Inglaterra', croatia:'Croácia', ghana:'Gana', panama:'Panamá',
+};
+const ptDoTime = (en) => TIME_EN_PT[norm(en)];
+const chaveJogo = (g) => `${g.data} | ${g.casa} x ${g.fora}`;
+// consolida variações de nome de artilheiro (texto livre) num rótulo único
+const ART_ALIAS = [
+  [/mbapp|mbape|mpab|^mba/, 'Mbappé'], [/haaland/, 'Haaland'], [/vinicius|vinijr|^vini/, 'Vinícius Jr'],
+  [/messi/, 'Messi'], [/neymar/, 'Neymar'], [/kane/, 'Harry Kane'], [/endrick/, 'Endrick'],
+  [/yamal/, 'Lamine Yamal'], [/ronaldo|cr7/, 'Cristiano Ronaldo'], [/alvarez/, 'Julián Álvarez'],
+  [/oyarzabal/, 'Mikel Oyarzabal'], [/markinhos/, 'Markinhos'], [/lautaro/, 'Lautaro Martínez'],
+  [/griezmann/, 'Griezmann'], [/lewandowski/, 'Lewandowski'], [/kolomuani|kolo/, 'Kolo Muani'],
+];
+const canonArtLabel = (s) => { const n = norm(s); for (const [re, label] of ART_ALIAS) if (re.test(n)) return label; return (s || '').trim(); };
+const canonArt = (s) => norm(canonArtLabel(s));
+const hojeBR = () => { const d = new Date(); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; };
+
+/* ---------- pontuação ---------- */
+function pontos(palpite, res, mata) {
+  if (!palpite || !res || res.gc == null || res.gf == null) return null;
+  const [pa, pb] = palpite, gc = res.gc, gf = res.gf;
+  if (pa === gc && pb === gf) return mata ? 8 : 5;
+  if (Math.sign(pa - pb) === Math.sign(gc - gf)) return mata ? 4 : 2;
+  return 0;
+}
+
+/* ---------- carregar ---------- */
+async function carregar() {
+  const [jogos, palpites, resultados, matamata] = await Promise.all([
+    fetch('data/jogos.json').then(r => r.json()),
+    fetch('data/palpites.json').then(r => r.json()),
+    fetch('data/resultados.json?_=' + Date.now()).then(r => r.json()),
+    fetch('data/palpites_matamata.json').then(r => r.json()).catch(() => null),
+  ]);
+  estado.jogos = jogos; estado.palpites = palpites; estado.resultados = resultados; estado.matamata = matamata;
+}
+
+/* fases que já têm jogos (para seletor e cálculo) */
+function fasesAtivas() {
+  const arr = [{ key: 'grupos', mata: false }];
+  if (estado.matamata && estado.matamata.fases)
+    for (const k of ORDEM_MATA) { const f = estado.matamata.fases[k]; if (f && (f.jogos || []).length) arr.push({ key: k, mata: true }); }
+  return arr;
+}
+
+/* lista unificada de jogos */
+function todosJogos() {
+  const arr = estado.jogos.map((g, i) => ({ ...g, tipo: 'grupo', gi: i, mata: false, faseKey: 'grupos' }));
+  if (estado.matamata && estado.matamata.fases)
+    for (const k of ORDEM_MATA) {
+      const fase = estado.matamata.fases[k]; if (!fase) continue;
+      (fase.jogos || []).forEach(j => arr.push({ data: j.data, hora: j.hora, casa: j.casa, fora: j.fora, tipo: 'mata', fase: k, faseKey: k, id: String(j.id), mata: true }));
+    }
+  return arr;
+}
+function resultadoDe(j) {
+  if (!j.mata) return estado.resultados.grupos[chaveJogo(j)] || null;
+  const fase = estado.matamata.fases[j.fase];
+  return (fase.resultados && fase.resultados[j.id]) || null;
+}
+function aoVivoDe(j) { return estado.aoVivo[j.mata ? (j.fase + '#' + j.id) : chaveJogo(j)]; }
+function palpiteDe(nome, j) {
+  if (!j.mata) { const p = estado.palpites.find(x => x.nome === nome); return p ? p.p[j.gi] : null; }
+  const fase = estado.matamata.fases[j.fase];
+  return (fase.palpites && fase.palpites[nome]) ? fase.palpites[nome][j.id] : null;
+}
+
+/* ---------- ESPN ---------- */
+function indicePares() {
+  const idx = {};
+  estado.jogos.forEach(g => { idx[[norm(g.casa), norm(g.fora)].sort().join('|')] = { tipo: 'grupo', chave: chaveJogo(g), casaNorm: norm(g.casa) }; });
+  if (estado.matamata && estado.matamata.fases)
+    for (const [fk, fase] of Object.entries(estado.matamata.fases))
+      (fase.jogos || []).forEach(j => { idx[[norm(j.casa), norm(j.fora)].sort().join('|')] = { tipo: 'mata', fase: fk, id: String(j.id), casaNorm: norm(j.casa) }; });
+  return idx;
+}
+async function aplicarAoVivo() {
+  let dados;
+  try { const r = await fetch(ESPN_URL, { cache: 'no-store' }); if (!r.ok) return false; dados = await r.json(); }
+  catch (e) { return false; }
+  const eventos = (dados && dados.events) || [];
+  const idx = indicePares(); estado.aoVivo = {};
+  for (const e of eventos) {
+    const tp = e.status && e.status.type; if (!tp) continue;
+    const comp = e.competitions && e.competitions[0]; const cs = (comp && comp.competitors) || [];
+    const home = cs.find(x => x.homeAway === 'home'), away = cs.find(x => x.homeAway === 'away'); if (!home || !away) continue;
+    const casaPT = ptDoTime(home.team && home.team.displayName), foraPT = ptDoTime(away.team && away.team.displayName);
+    if (!casaPT || !foraPT) continue;
+    const ref = idx[[norm(casaPT), norm(foraPT)].sort().join('|')]; if (!ref) continue;
+    const casaEhHome = ref.casaNorm === norm(casaPT);
+    const gc = Number(casaEhHome ? home.score : away.score), gf = Number(casaEhHome ? away.score : home.score);
+    if (Number.isNaN(gc) || Number.isNaN(gf)) continue;
+    const refKey = ref.tipo === 'grupo' ? ref.chave : (ref.fase + '#' + ref.id);
+    if (tp.state === 'in') estado.aoVivo[refKey] = { gc, gf, det: tp.shortDetail || 'ao vivo' };
+    if (tp.state !== 'post') continue;
+    if (ref.tipo === 'grupo') { estado.resultados.grupos[ref.chave] = Object.assign(estado.resultados.grupos[ref.chave] || {}, { gc, gf }); }
+    else { const fase = estado.matamata.fases[ref.fase]; fase.resultados = fase.resultados || {}; const a = fase.resultados[ref.id]; if (!a || !a.manual) fase.resultados[ref.id] = { gc, gf }; }
+  }
+  return true;
+}
+
+/* ---------- cálculo (por fase + total) ---------- */
+const novoAcc = () => ({ pts: 0, exatos: 0, certos: 0, zeros: 0, resolvidos: 0 });
+function somar(a, pt, exato) { if (pt == null) return; a.resolvidos++; a.pts += pt; if (pt === exato) a.exatos++; else if (pt > 0) a.certos++; else a.zeros++; }
+
+function calcular() {
+  const master = estado.resultados.master || {};
+  const campOK = master.campeao ? norm(master.campeao) : null;
+  const artLista = Array.isArray(master.artilheiro) ? master.artilheiro.map(canonArt) : (master.artilheiro ? [canonArt(master.artilheiro)] : []);
+
+  estado.tabela = estado.palpites.map(p => {
+    const fases = {};
+    const g = novoAcc();
+    estado.jogos.forEach((j, i) => somar(g, pontos(p.p[i], estado.resultados.grupos[chaveJogo(j)], false), 5));
+    fases.grupos = g;
+    if (estado.matamata && estado.matamata.fases)
+      for (const fk of ORDEM_MATA) {
+        const fase = estado.matamata.fases[fk]; if (!fase || !(fase.jogos || []).length) continue;
+        const a = novoAcc();
+        fase.jogos.forEach(j => { const pal = (fase.palpites && fase.palpites[p.nome]) ? fase.palpites[p.nome][String(j.id)] : null; somar(a, pontos(pal, fase.resultados && fase.resultados[String(j.id)], true), 8); });
+        fases[fk] = a;
+      }
+    const camp = !!(campOK && norm(p.campeao) === campOK);
+    const art = !!(artLista.length && artLista.includes(canonArt(p.artilheiro)));
+    const masterPts = (camp ? 5 : 0) + (art ? 5 : 0);
+    const total = novoAcc();
+    for (const k in fases) { total.pts += fases[k].pts; total.exatos += fases[k].exatos; total.certos += fases[k].certos; total.zeros += fases[k].zeros; total.resolvidos += fases[k].resolvidos; }
+    total.pts += masterPts;
+    return { nome: p.nome, fases, masterPts, camp, art, total };
+  });
+}
+
+function rankingDe(scope) {
+  return estado.tabela.map(t => {
+    const s = scope === 'consolidado' ? t.total : (t.fases[scope] || novoAcc());
+    return { nome: t.nome, pts: s.pts, exatos: s.exatos, certos: s.certos, zeros: s.zeros, camp: t.camp, art: t.art };
+  }).sort((a, b) => b.pts - a.pts || b.exatos - a.exatos || a.zeros - b.zeros ||
+      (scope === 'consolidado' ? (b.camp - a.camp) || (b.art - a.art) : 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+/* placar mais palpitado de um jogo */
+function topPalpite(j) {
+  const g = {};
+  estado.palpites.forEach(p => { const pal = palpiteDe(p.nome, j); if (!pal) return; const k = pal[0] + 'x' + pal[1]; (g[k] = g[k] || { pa: pal[0], pb: pal[1], n: 0 }).n++; });
+  let best = null, tot = 0;
+  for (const v of Object.values(g)) { tot += v.n; if (!best || v.n > best.n) best = v; }
+  return best ? { ...best, tot } : null;
+}
+
+/* contagem de palpites master (campeão/artilheiro) */
+function contagem(getter, canon) {
+  const m = {};
+  estado.palpites.forEach(p => { let v = (getter(p) || '').trim(); if (!v) return; if (canon) v = canon(v); const k = norm(v); (m[k] = m[k] || { label: v, n: 0 }).n++; });
+  return Object.values(m).sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, 'pt-BR'));
+}
+
+/* ---------- detalhe de um jogo: palpites de todos ---------- */
+function abrirJogo(j) {
+  const res = resultadoDe(j), vivo = aoVivoDe(j), exato = j.mata ? 8 : 5;
+  // agrupa participantes por placar palpitado
+  const grupos = {};
+  estado.palpites.forEach(p => { const pal = palpiteDe(p.nome, j); if (!pal) return; const k = pal[0] + ' x ' + pal[1];
+    (grupos[k] = grupos[k] || { pa: pal[0], pb: pal[1], nomes: [] }).nomes.push(p.nome); });
+  let arr = Object.values(grupos).map(g => ({ ...g, n: g.nomes.length, pt: pontos([g.pa, g.pb], res, j.mata) }));
+  // ordena por pontos (se encerrado) e depois pelo placar mais escolhido
+  arr.sort((a, b) => (res ? (b.pt || 0) - (a.pt || 0) : 0) || b.n - a.n || a.pa - b.pa || a.pb - b.pb);
+  arr.forEach(g => g.nomes.sort((x, y) => x.localeCompare(y, 'pt-BR')));
+  const semPalpite = estado.palpites.length - arr.reduce((s, g) => s + g.n, 0);
+  let ex = 0, ac = 0, er = 0; arr.forEach(g => { if (g.pt == null) return; if (g.pt === exato) ex += g.n; else if (g.pt > 0) ac += g.n; else er += g.n; });
+
+  const placar = res ? `${res.gc} <span class="muted">x</span> ${res.gf}` : vivo ? `${vivo.gc} <span class="muted">x</span> ${vivo.gf}` : '<span class="muted">a definir</span>';
+  const status = res ? '<span class="badge fim">encerrado</span>' : vivo ? `<span class="badge" style="color:var(--acc2)">🔴 ${esc(vivo.det)}</span>` : `<span class="badge">${esc(j.hora || j.data)}</span>`;
+
+  const corpo = arr.map(g => {
+    const cls = g.pt == null ? '' : 'pt' + g.pt;
+    const bdg = g.pt == null ? '' : `<span class="ppt ${cls}">+${g.pt}</span>`;
+    return `<div class="grp">
+      <div class="grp-h"><span class="placar-mini ${cls}">${g.pa} x ${g.pb}</span>
+        <span class="small muted">${g.n} ${g.n > 1 ? 'palpites' : 'palpite'}</span>${bdg}</div>
+      <div class="grp-nomes">${g.nomes.map(esc).join(', ')}</div></div>`;
+  }).join('');
+
+  const ov = el(`<div class="overlay"><div class="modal">
+    <div class="modal-h">
+      <div><div style="font-weight:700">${esc(j.casa)} <span class="muted">x</span> ${esc(j.fora)}</div>
+      <div class="small muted">${esc(j.data)}${j.hora ? ' · ' + esc(j.hora) : ''} · ${esc(FASE_LABEL[j.faseKey] || '')}</div></div>
+      <button class="x" aria-label="Fechar">✕</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:14px;border-bottom:1px solid var(--line)">
+      <span class="placar" style="font-size:20px">${placar}</span> ${status}
+    </div>
+    ${res
+      ? `<div class="dist" style="padding:10px 16px">🎯 ${ex} cravaram · ✅ ${ac} acertaram o vencedor · ❌ ${er} erraram</div>`
+      : `<div class="dist" style="padding:10px 16px">⏳ Placar ao vivo — a pontuação entra no ranking só quando o jogo encerrar.</div>`}
+    <div class="dist" style="padding:2px 16px 6px;color:var(--mut)">Palpites por placar ${res ? '(ordenados por pontos)' : '(do mais escolhido ao menos)'}:</div>
+    ${corpo}
+    ${semPalpite ? `<div class="dist" style="padding:8px 16px 14px">${semPalpite} sem palpite registrado.</div>` : '<div style="height:10px"></div>'}
+  </div></div>`);
+  const fechar = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+  ov.querySelector('.x').addEventListener('click', fechar);
+  document.body.appendChild(ov);
+}
+
+/* ---------- montagem de lista de jogos (clicável) ---------- */
+function blocoJogos(lista) {
+  const frag = document.createDocumentFragment();
+  const dias = [];
+  lista.forEach(j => { let d = dias.find(x => x.data === j.data); if (!d) { d = { data: j.data, jogos: [] }; dias.push(d); } d.jogos.push(j); });
+  dias.forEach(dia => {
+    frag.appendChild(el(`<div class="dia-h">${esc(dia.data)}</div>`));
+    const card = el(`<div class="card"></div>`);
+    dia.jogos.forEach(j => {
+      const res = resultadoDe(j), vivo = aoVivoDe(j);
+      let placar, pcls = 'placar', badge;
+      if (res) { placar = `${res.gc} <span class="muted">x</span> ${res.gf}`; badge = `<span class="badge fim">encerrado</span>`; }
+      else if (vivo) { placar = `${vivo.gc} <span class="muted">x</span> ${vivo.gf}`; pcls += ' vivo'; badge = `<span class="badge" style="color:var(--acc2)">🔴 ${esc(vivo.det)}</span>`; }
+      else { placar = '–'; pcls += ' aberto'; badge = `<span class="badge">${esc(j.hora || 'a definir')}</span>`; }
+      const item = el(`<div class="jogo-item clicavel">
+        <div class="jogo">
+          <div class="time casa">${esc(j.casa)}</div>
+          <div class="${pcls}">${placar}</div>
+          <div class="time fora">${esc(j.fora)}${j.mata ? ' <span class="badge mata">8/4</span>' : ''}</div>
+        </div>
+        <div class="jogo-meta">${badge} <span class="ver-todos">ver palpites de todos ›</span></div>
+      </div>`);
+      item.addEventListener('click', () => abrirJogo(j));
+      card.appendChild(item);
+    });
+    frag.appendChild(card);
+  });
+  return frag;
+}
+
+/* ---------- RENDER ---------- */
+function render() {
+  const app = $('#app'); app.innerHTML = '';
+  ({ hoje: renderHoje, ranking: renderRanking, jogos: renderJogos, participante: renderParticipante, comparar: renderComparar, master: renderMaster, regras: renderRegras }[estado.aba] || renderHoje)(app);
+}
+
+function renderHoje(c) {
+  const hoje = hojeBR();
+  const lista = todosJogos().filter(j => j.data === hoje);
+  c.appendChild(el(`<div class="dia-h" style="margin-top:6px">🔥 Jogos de hoje · ${esc(hoje)}</div>`));
+  if (!lista.length) {
+    c.appendChild(el(`<div class="card" style="padding:30px;text-align:center"><div style="font-size:34px;margin-bottom:6px">📅</div><div class="muted">Nenhum jogo programado para hoje.</div></div>`));
+    const prox = todosJogos().filter(j => !resultadoDe(j) && !aoVivoDe(j))[0];
+    if (prox) { c.appendChild(el(`<div class="dia-h">Próximo jogo</div>`)); c.appendChild(blocoJogos([prox])); }
+    return;
+  }
+  c.appendChild(el(`<div class="small muted" style="margin:0 4px 8px">Toque em um jogo para ver o palpite de todos os participantes.</div>`));
+  // remove o dia-h duplicado do bloco (já temos cabeçalho); monta direto
+  const card = el(`<div class="card"></div>`);
+  lista.forEach(j => {
+    const res = resultadoDe(j), vivo = aoVivoDe(j);
+    let placar, pcls = 'placar', badge;
+    if (res) { placar = `${res.gc} <span class="muted">x</span> ${res.gf}`; badge = `<span class="badge fim">encerrado</span>`; }
+    else if (vivo) { placar = `${vivo.gc} <span class="muted">x</span> ${vivo.gf}`; pcls += ' vivo'; badge = `<span class="badge" style="color:var(--acc2)">🔴 ${esc(vivo.det)}</span>`; }
+    else { placar = '–'; pcls += ' aberto'; badge = `<span class="badge">${esc(j.hora || 'a definir')}</span>`; }
+    const top = topPalpite(j);
+    const maisP = top ? `<div class="mais-palpitado">🔮 Placar mais palpitado: <b>${top.pa} x ${top.pb}</b> <span class="muted">· ${top.n} de ${top.tot}</span></div>` : '';
+    const item = el(`<div class="jogo-item clicavel">
+      <div class="jogo"><div class="time casa">${esc(j.casa)}</div><div class="${pcls}">${placar}</div>
+      <div class="time fora">${esc(j.fora)}${j.mata ? ' <span class="badge mata">8/4</span>' : ''}</div></div>
+      <div class="jogo-meta">${badge} <span class="ver-todos">ver palpites de todos ›</span></div>
+      ${maisP}</div>`);
+    item.addEventListener('click', () => abrirJogo(j));
+    card.appendChild(item);
+  });
+  c.appendChild(card);
+}
+
+function renderRanking(c) {
+  const ativas = fasesAtivas();
+  const opts = [`<option value="consolidado">Consolidado (todas as fases)</option>`]
+    .concat(ativas.map(f => `<option value="${f.key}">${FASE_LABEL[f.key]}</option>`)).join('');
+  c.appendChild(el(`<div class="card" style="padding:12px 14px"><div class="row2"><div>
+    <label class="small muted">Ver pontuação de</label>
+    <select id="scope">${opts}</select></div></div></div>`));
+  const box = el(`<div id="boxRank"></div>`); c.appendChild(box);
+  const sel = $('#scope'); sel.value = estado.sel.scope;
+  if (![...sel.options].some(o => o.value === estado.sel.scope)) { estado.sel.scope = 'consolidado'; sel.value = 'consolidado'; }
+
+  const desenhar = () => {
+    const scope = sel.value; estado.sel.scope = scope; box.innerHTML = '';
+    const r = rankingDe(scope);
+    const totJogos = todosJogos().filter(j => resultadoDe(j) && (scope === 'consolidado' || j.faseKey === scope)).length;
+    const lider = r.find(x => x.pts > 0) || r[0];
+    const scopeLabel = scope === 'consolidado' ? 'todas as fases' : FASE_LABEL[scope];
+    box.appendChild(el(`<div class="resumo-dia">
+      <div class="pill">👥 <b>${r.length}</b> participantes</div>
+      <div class="pill">⚽ <b>${totJogos}</b> jogos apurados</div>
+      ${lider && lider.pts > 0 ? `<div class="pill">👑 Líder: <b>${esc(lider.nome)}</b> · ${lider.pts} pts</div>` : ''}
+    </div>`));
+    const card = el(`<div class="card"><div class="card-h"><span>🏅 Ranking · <span class="muted">${scopeLabel}</span></span>
+      <span class="small muted hide-sm">desempate: exatos › menos zeros › campeão › artilheiro</span></div></div>`);
+    const tbl = el(`<table class="rank"><thead><tr>
+      <th class="pos">#</th><th>Participante</th>
+      <th class="num">Exa</th><th class="num">Ven</th><th class="num">Zero</th>
+      <th style="text-align:right">Pts</th></tr></thead><tbody></tbody></table>`);
+    const tb = tbl.querySelector('tbody');
+    r.forEach((x, i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+      tb.appendChild(el(`<tr class="${i < 3 ? 'top' + (i+1) : ''}">
+        <td class="pos">${i + 1}</td>
+        <td><div class="nome-cel"><span class="medal">${medal}</span>${esc(x.nome)}${x.camp ? ' 👑' : ''}${x.art ? ' ⚽' : ''}</div></td>
+        <td class="num">${x.exatos}</td><td class="num">${x.certos}</td><td class="num">${x.zeros}</td>
+        <td class="pts">${x.pts}</td></tr>`));
+    });
+    card.appendChild(tbl); box.appendChild(card);
+    box.appendChild(el(`<div class="small muted" style="padding:4px 6px">Exa = placares exatos · Ven = acertou o vencedor · Zero = jogos sem pontos.</div>`));
+  };
+  sel.addEventListener('change', desenhar); desenhar();
+}
+
+function renderJogos(c) {
+  const ativas = fasesAtivas();
+  const opts = [`<option value="todos">Todas as fases</option>`].concat(ativas.map(f => `<option value="${f.key}">${FASE_LABEL[f.key]}</option>`)).join('');
+  c.appendChild(el(`<div class="card" style="padding:12px 14px"><div class="row2"><div>
+    <label class="small muted">Fase</label><select id="fjogos">${opts}</select></div></div></div>`));
+  c.appendChild(el(`<div class="small muted" style="margin:0 4px 4px">Toque em um jogo para ver o palpite de todos.</div>`));
+  const cont = el(`<div id="lista-jogos"></div>`); c.appendChild(cont);
+  const desenhar = () => {
+    const f = $('#fjogos').value; cont.innerHTML = '';
+    let lista = todosJogos();
+    if (f !== 'todos') lista = lista.filter(j => j.faseKey === f);
+    cont.appendChild(blocoJogos(lista));
+  };
+  $('#fjogos').addEventListener('change', desenhar); desenhar();
+}
+
+function selectParticipantes(id, sel) {
+  const nomes = estado.palpites.map(p => p.nome).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return `<select id="${id}"><option value="">— escolha —</option>${nomes.map(n => `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
+}
+
+function linhasPalpites(nome) {
+  const jogos = todosJogos(); let html = '', secao = '';
+  const tot = estado.tabela.find(t => t.nome === nome).total;
+  jogos.forEach(j => {
+    const tag = FASE_LABEL[j.faseKey];
+    if (tag !== secao) { secao = tag; html += `<div class="dia-h">${tag}</div>`; }
+    const pal = palpiteDe(nome, j), res = resultadoDe(j), pt = pontos(pal, res, j.mata);
+    const cls = pt == null ? 'ptpend' : 'pt' + pt;
+    html += `<div class="pl"><div class="pdata">${esc(j.data)}</div>
+      <div>${esc(j.casa)} <span class="muted">x</span> ${esc(j.fora)}</div>
+      <div class="ppal">${pal ? `${pal[0]} x ${pal[1]}` : '—'} <span class="pres">${res ? `(${res.gc} x ${res.gf})` : ''}</span></div>
+      <div class="ppt ${cls}">${pt == null ? '·' : pt}</div></div>`;
+  });
+  return { html, tot };
+}
+
+function renderParticipante(c) {
+  c.appendChild(el(`<div class="card" style="padding:12px 14px"><label class="small muted">Participante</label>${selectParticipantes('selP', estado.sel.p)}</div>`));
+  const box = el(`<div id="boxP"></div>`); c.appendChild(box);
+  const desenhar = () => {
+    const nome = $('#selP').value; estado.sel.p = nome; box.innerHTML = '';
+    if (!nome) { box.appendChild(el(`<div class="card" style="padding:28px;text-align:center"><span class="muted">Escolha um participante para ver os palpites.</span></div>`)); return; }
+    const rk = rankingDe('consolidado').findIndex(x => x.nome === nome) + 1;
+    const d = linhasPalpites(nome);
+    box.appendChild(el(`<div class="card">
+      <div class="total-pessoa">
+        <div class="kv"><span>Pontos</span><span class="big">${d.tot.pts}</span></div>
+        <div class="kv"><span>Posição</span><b>${rk}º</b></div>
+        <div class="kv"><span>Exatos</span><b>${d.tot.exatos}</b></div>
+        <div class="kv"><span>Vencedor</span><b>${d.tot.certos}</b></div>
+        <div class="kv"><span>Zerados</span><b>${d.tot.zeros}</b></div>
+      </div>${d.html}</div>`));
+  };
+  $('#selP').addEventListener('change', desenhar); desenhar();
+}
+
+function renderComparar(c) {
+  c.appendChild(el(`<div class="card" style="padding:12px 14px"><div class="row2">
+    <div><label class="small muted">Participante A</label>${selectParticipantes('selA', estado.sel.a)}</div>
+    <div><label class="small muted">Participante B</label>${selectParticipantes('selB', estado.sel.b)}</div></div></div>`));
+  const box = el(`<div id="boxC"></div>`); c.appendChild(box);
+  const desenhar = () => {
+    const a = $('#selA').value, b = $('#selB').value; estado.sel.a = a; estado.sel.b = b; box.innerHTML = '';
+    if (!a || !b) { box.appendChild(el(`<div class="card" style="padding:28px;text-align:center"><span class="muted">Escolha dois participantes para comparar.</span></div>`)); return; }
+    const ta = estado.tabela.find(x => x.nome === a), tb = estado.tabela.find(x => x.nome === b);
+    const card = el(`<div class="card"><div class="card-h">Comparativo</div>
+      <div class="total-pessoa">
+        <div class="kv"><span>${esc(a)}</span><span class="big">${ta.total.pts}</span></div>
+        <div class="kv"><span>${esc(b)}</span><span class="big">${tb.total.pts}</span></div>
+      </div></div>`);
+    const jogos = todosJogos(); let secao = '';
+    jogos.forEach(j => {
+      const res = resultadoDe(j), pa = palpiteDe(a, j), pb = palpiteDe(b, j);
+      if (!res && !pa && !pb) return;
+      const tag = FASE_LABEL[j.faseKey];
+      if (tag !== secao) { secao = tag; card.appendChild(el(`<div class="dia-h">${tag}</div>`)); }
+      const pta = pontos(pa, res, j.mata), ptb = pontos(pb, res, j.mata);
+      card.appendChild(el(`<div class="pl" style="grid-template-columns:1fr auto 1fr">
+        <div class="ppal" style="text-align:right">${pa ? `${pa[0]} x ${pa[1]}` : '—'} <span class="ppt pt${pta == null ? 'pend' : pta}">${pta == null ? '·' : pta}</span></div>
+        <div class="small muted" style="text-align:center;min-width:78px">${esc(j.casa)}<br><b>${res ? `${res.gc} x ${res.gf}` : 'x'}</b><br>${esc(j.fora)}</div>
+        <div class="ppal"><span class="ppt pt${ptb == null ? 'pend' : ptb}">${ptb == null ? '·' : ptb}</span> ${pb ? `${pb[0]} x ${pb[1]}` : '—'}</div>
+      </div>`));
+    });
+    box.appendChild(card);
+  };
+  $('#selA').addEventListener('change', desenhar); $('#selB').addEventListener('change', desenhar); desenhar();
+}
+
+function renderMaster(c) {
+  const master = estado.resultados.master || {};
+  const campOK = master.campeao ? norm(master.campeao) : null;
+  const artOK = Array.isArray(master.artilheiro) ? master.artilheiro.map(canonArt) : (master.artilheiro ? [canonArt(master.artilheiro)] : []);
+  const bloco = (titulo, emoji, lista, acerto, vazio) => {
+    const max = lista.length ? lista[0].n : 1;
+    const linhas = lista.length ? lista.map(x => {
+      const ok = acerto(x);
+      return `<div class="barrow${ok ? ' acerto' : ''}">
+        <div class="barlbl">${esc(x.label)}${ok ? ' ✅' : ''}</div>
+        <div class="barwrap"><div class="barfill${ok ? ' ok' : ''}" style="width:${Math.max(6, Math.round(x.n / max * 100))}%"></div></div>
+        <div class="barn">${x.n}</div></div>`;
+    }).join('') : `<div class="muted small" style="padding:8px 2px">${vazio}</div>`;
+    return el(`<div class="card"><div class="card-h">${emoji} ${titulo} <span class="small muted">${lista.length} ${lista.length === 1 ? 'opção' : 'opções'}</span></div><div style="padding:10px 14px 14px">${linhas}</div></div>`);
+  };
+  c.appendChild(el(`<div class="small muted" style="margin:6px 4px 10px">Palpites de <b>campeão</b> e <b>artilheiro</b>, enviados na fase de grupos — valem <b>5 pontos cada</b> e são apurados no fim da Copa.</div>`));
+  c.appendChild(bloco('Campeão da Copa', '👑', contagem(p => p.campeao), x => !!(campOK && norm(x.label) === campOK), 'Nenhum palpite de campeão.'));
+  c.appendChild(bloco('Artilheiro da Copa', '⚽', contagem(p => p.artilheiro, canonArtLabel), x => artOK.includes(canonArt(x.label)), 'Nenhum palpite de artilheiro.'));
+}
+
+function renderRegras(c) {
+  c.appendChild(el(`
+  <div class="regras">
+    <div class="card reg-hero">
+      <div class="reg-hero-ico">🏆</div>
+      <div><div class="reg-hero-t">Regras do Bolão · Copa do Mundo 2026</div>
+      <div class="small muted">Tudo o que vale ponto, prazos e premiação — num lugar só.</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">🎯 Como pontua</div>
+      <div style="padding:6px 14px 14px">
+        <table class="reg">
+          <thead><tr><th>Resultado do seu palpite</th><th class="cnum">Grupos</th><th class="cnum">Mata-mata</th></tr></thead>
+          <tbody>
+            <tr><td>Cravou o <b>placar exato</b></td><td class="cnum verde">5</td><td class="cnum verde">8</td></tr>
+            <tr><td>Acertou o <b>vencedor/empate</b>, mas errou o placar</td><td class="cnum ouro">2</td><td class="cnum ouro">4</td></tr>
+            <tr><td>Errou o resultado</td><td class="cnum verm">0</td><td class="cnum verm">0</td></tr>
+          </tbody>
+        </table>
+        <div class="callout alerta">⚠️ No <b>mata-mata</b> vale apenas o placar dos <b>90 minutos + acréscimos</b>. Prorrogação e pênaltis <b>não contam</b>, mesmo que definam quem se classifica.</div>
+        <div class="callout">📌 <b>Por que o mata-mata vale mais?</b> ~70% dos jogos são na fase de grupos. Valorizar o mata-mata mantém a disputa viva até o fim. Todos partem do mesmo ponto.</div>
+        <div class="reg-ex">
+          <div><b>Ex. grupos</b> — palpite Brasil 3×0: real 3×0 = <span class="verde">5</span>; real 1×0 p/ Brasil = <span class="ouro">2</span>; real 1×1 = <span class="verm">0</span>.</div>
+          <div><b>Ex. mata-mata</b> — palpite Brasil 2×1: real 2×1 (90') = <span class="verde">8</span>; real 3×1 = <span class="ouro">4</span>; 1×1 e Brasil passa nos pênaltis = vale o 1×1 = <span class="verm">0</span>.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">⭐ Palpites master (campeão e artilheiro)</div>
+      <div style="padding:10px 14px 14px">
+        <ul class="reg-lista">
+          <li><b>Campeão da Copa</b> — acertou: <span class="verde">5 pontos</span></li>
+          <li><b>Artilheiro da Copa</b> — acertou: <span class="verde">5 pontos</span></li>
+          <li>Enviados <b>uma vez</b>, junto com a fase de grupos, e valem até o fim da Copa.</li>
+          <li>Empate na artilharia: vale o acerto para <b>qualquer</b> um dos líderes de gols.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">🕐 Prazos e travamento</div>
+      <div style="padding:10px 14px 14px">
+        <ul class="reg-lista">
+          <li><b>Fase de grupos:</b> bloco único, antes do primeiro jogo da Copa.</li>
+          <li><b>Mata-mata:</b> fase a fase, antes do primeiro jogo de cada fase.</li>
+          <li><b>Travamento:</b> depois do prazo, não há alteração de palpites.</li>
+          <li>💾 Preenchendo logado na conta Google, o progresso é salvo sozinho.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">⚖️ Critérios de desempate</div>
+      <div style="padding:10px 14px 14px">
+        <ol class="reg-lista num">
+          <li>Maior número de <b>placares exatos</b>.</li>
+          <li>Menor número de <b>jogos com 0 ponto</b>.</li>
+          <li>Acerto do <b>campeão</b>.</li>
+          <li>Acerto do <b>artilheiro</b>.</li>
+          <li>Persistindo o empate: somam-se os prêmios das posições empatadas e divide-se igualmente.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">💰 Premiação</div>
+      <div style="padding:10px 14px 14px">
+        <div class="premio-grid">
+          <div class="premio"><span>🥇 1º lugar</span><b>60%</b></div>
+          <div class="premio"><span>🥈 2º lugar</span><b>30%</b></div>
+          <div class="premio"><span>🥉 3º lugar</span><b>10%</b></div>
+        </div>
+        <ul class="reg-lista">
+          <li>Prêmio total = nº de participantes pagantes × R$ 150, <b>menos 2 cotas (R$ 300)</b> reservadas à organização (dois administradores).</li>
+          <li>O valor é apurado ao fim das inscrições.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">📝 Participação</div>
+      <div style="padding:10px 14px 14px">
+        <ul class="reg-lista">
+          <li><b>Cota:</b> R$ 150 por participante.</li>
+          <li><b>Vagas:</b> abertas, sem limite fixo.</li>
+          <li><b>Inscrição válida</b> somente com o pagamento confirmado até o início da Copa.</li>
+        </ul>
+        <div class="callout">Ao pagar a cota, o participante declara estar de acordo com todas as regras, prazos e critérios. Casos não previstos são conduzidos pela Comissão Organizadora.</div>
+      </div>
+    </div>
+  </div>`));
+}
+
+/* ---------- carimbo + loop ---------- */
+function carimbo(ok) {
+  const d = new Date(); const hhmm = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  const e = $('#atualizado'); e.textContent = ok ? `🟢 ao vivo · ${hhmm}` : `atualizado: ${estado.resultados.atualizado_em || '—'}`;
+  e.classList.toggle('ok', ok); e.classList.remove('pulso'); void e.offsetWidth; e.classList.add('pulso');
+}
+async function tick() { const ok = await aplicarAoVivo(); calcular(); render(); carimbo(ok); }
+
+async function init() {
+  document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.remove('ativo'));
+    b.classList.add('ativo'); estado.aba = b.dataset.aba; render();
+  }));
+  try { await carregar(); } catch (e) { $('#app').innerHTML = `<div class="loading">Erro ao carregar os dados.</div>`; return; }
+  calcular(); render(); carimbo(false);
+  tick(); setInterval(tick, INTERVALO);
+}
+init();
