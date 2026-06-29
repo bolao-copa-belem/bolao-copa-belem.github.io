@@ -7,7 +7,8 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
 
 const estado = { jogos: [], palpites: [], resultados: { grupos: {}, master: {} }, matamata: null,
-  tabela: [], aba: 'hoje', aoVivo: {}, sel: { p: null, a: null, b: null, scope: 'consolidado' } };
+  tabela: [], aba: 'hoje', aoVivo: {}, parResultado: {},
+  sel: { p: null, a: null, b: null, scope: 'consolidado', dia: null } };
 
 const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719';
 const INTERVALO = 60000;
@@ -48,6 +49,19 @@ const ART_ALIAS = [
 const canonArtLabel = (s) => { const n = norm(s); for (const [re, label] of ART_ALIAS) if (re.test(n)) return label; return (s || '').trim(); };
 const canonArt = (s) => norm(canonArtLabel(s));
 const hojeBR = () => { const d = new Date(); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; };
+
+// bandeiras (emoji) por seleção
+const FLAG = {
+  'México':'🇲🇽','África do Sul':'🇿🇦','Coreia do Sul':'🇰🇷','República Tcheca':'🇨🇿','Canadá':'🇨🇦','Catar':'🇶🇦',
+  'Suíça':'🇨🇭','Bósnia e Herzegovina':'🇧🇦','Brasil':'🇧🇷','Marrocos':'🇲🇦','Haiti':'🇭🇹','Escócia':'🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  'Estados Unidos':'🇺🇸','Paraguai':'🇵🇾','Austrália':'🇦🇺','Turquia':'🇹🇷','Alemanha':'🇩🇪','Curaçao':'🇨🇼',
+  'Costa do Marfim':'🇨🇮','Equador':'🇪🇨','Holanda':'🇳🇱','Japão':'🇯🇵','Tunísia':'🇹🇳','Suécia':'🇸🇪',
+  'Bélgica':'🇧🇪','Egito':'🇪🇬','Irã':'🇮🇷','Nova Zelândia':'🇳🇿','Espanha':'🇪🇸','Cabo Verde':'🇨🇻',
+  'Arábia Saudita':'🇸🇦','Uruguai':'🇺🇾','França':'🇫🇷','Senegal':'🇸🇳','Noruega':'🇳🇴','Iraque':'🇮🇶',
+  'Argentina':'🇦🇷','Argélia':'🇩🇿','Áustria':'🇦🇹','Jordânia':'🇯🇴','Portugal':'🇵🇹','Uzbequistão':'🇺🇿',
+  'Colômbia':'🇨🇴','RD Congo':'🇨🇩','Inglaterra':'🏴󠁧󠁢󠁥󠁮󠁧󠁿','Croácia':'🇭🇷','Gana':'🇬🇭','Panamá':'🇵🇦',
+};
+const bandeira = (n) => FLAG[n] ? FLAG[n] + ' ' : '';
 
 /* ---------- pontuação ---------- */
 function pontos(palpite, res, mata) {
@@ -120,6 +134,13 @@ async function aplicarAoVivo() {
     const home = cs.find(x => x.homeAway === 'home'), away = cs.find(x => x.homeAway === 'away'); if (!home || !away) continue;
     const casaPT = ptDoTime(home.team && home.team.displayName), foraPT = ptDoTime(away.team && away.team.displayName);
     if (!casaPT || !foraPT) continue;
+    // guarda resultado/vencedor por par de times (usado no chaveamento)
+    if (tp.state === 'post') {
+      const hs = Number(home.score), as = Number(away.score);
+      const wComp = cs.find(x => x.winner === true);
+      const winner = wComp ? ptDoTime(wComp.team && wComp.team.displayName) : (hs > as ? casaPT : as > hs ? foraPT : null);
+      estado.parResultado[[norm(casaPT), norm(foraPT)].sort().join('|')] = { casa: casaPT, fora: foraPT, gc: hs, gf: as, winner };
+    }
     const ref = idx[[norm(casaPT), norm(foraPT)].sort().join('|')]; if (!ref) continue;
     const casaEhHome = ref.casaNorm === norm(casaPT);
     const gc = Number(casaEhHome ? home.score : away.score), gf = Number(casaEhHome ? away.score : home.score);
@@ -216,7 +237,7 @@ function abrirJogo(j) {
 
   const ov = el(`<div class="overlay"><div class="modal">
     <div class="modal-h">
-      <div><div style="font-weight:700">${esc(j.casa)} <span class="muted">x</span> ${esc(j.fora)}</div>
+      <div><div style="font-weight:700">${bandeira(j.casa)}${esc(j.casa)} <span class="muted">x</span> ${bandeira(j.fora)}${esc(j.fora)}</div>
       <div class="small muted">${esc(j.data)}${j.hora ? ' · ' + esc(j.hora) : ''} · ${esc(FASE_LABEL[j.faseKey] || '')}</div></div>
       <button class="x" aria-label="Fechar">✕</button>
     </div>
@@ -266,42 +287,160 @@ function blocoJogos(lista) {
   return frag;
 }
 
+/* pontos que cada participante fez HOJE (jogos com data de hoje já encerrados) */
+function pontosHoje() {
+  const hoje = hojeBR(), m = {};
+  todosJogos().forEach(j => {
+    if (j.data !== hoje) return; const res = resultadoDe(j); if (!res) return;
+    estado.palpites.forEach(p => { const pt = pontos(palpiteDe(p.nome, j), res, j.mata); if (pt != null) m[p.nome] = (m[p.nome] || 0) + pt; });
+  });
+  return m;
+}
+
+/* datas: utilidades de rótulo */
+const dataKey = (d) => { const [dd, mm] = d.split('/').map(Number); return mm * 100 + dd; };
+const DIASEM = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+function dataObj(d) { const [dd, mm] = d.split('/').map(Number); return new Date(2026, mm - 1, dd); }
+function rotuloData(d) {
+  const hoje = hojeBR(); const amanha = (() => { const x = dataObj(hoje); x.setDate(x.getDate() + 1); return `${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}`; })();
+  if (d === hoje) return `Hoje · ${d}`;
+  if (d === amanha) return `Amanhã · ${d}`;
+  return `${DIASEM[dataObj(d).getDay()]} · ${d}`;
+}
+
+/* ---------- CHAVEAMENTO (estrutura oficial FIFA 2026) ---------- */
+// ordem vertical pensada para o desenho de chave (top→bottom)
+const CHAVE = [
+  { fase: '16avos', titulo: '16-avos', ids: [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87] },
+  { fase: 'oitavas', titulo: 'Oitavas', jogos: [
+    { id: 89, data: '04/07', hora: '18:00', a: { w: 74 }, b: { w: 77 } },
+    { id: 90, data: '04/07', hora: '14:00', a: { w: 73 }, b: { w: 75 } },
+    { id: 93, data: '06/07', hora: '16:00', a: { w: 83 }, b: { w: 84 } },
+    { id: 94, data: '06/07', hora: '21:00', a: { w: 81 }, b: { w: 82 } },
+    { id: 91, data: '05/07', hora: '17:00', a: { w: 76 }, b: { w: 78 } },
+    { id: 92, data: '05/07', hora: '21:00', a: { w: 79 }, b: { w: 80 } },
+    { id: 95, data: '07/07', hora: '13:00', a: { w: 86 }, b: { w: 88 } },
+    { id: 96, data: '07/07', hora: '17:00', a: { w: 85 }, b: { w: 87 } },
+  ]},
+  { fase: 'quartas', titulo: 'Quartas', jogos: [
+    { id: 97, data: '09/07', hora: '17:00', a: { w: 89 }, b: { w: 90 } },
+    { id: 98, data: '10/07', hora: '16:00', a: { w: 93 }, b: { w: 94 } },
+    { id: 99, data: '11/07', hora: '18:00', a: { w: 91 }, b: { w: 92 } },
+    { id: 100, data: '11/07', hora: '22:00', a: { w: 95 }, b: { w: 96 } },
+  ]},
+  { fase: 'semis', titulo: 'Semifinais', jogos: [
+    { id: 101, data: '14/07', hora: '16:00', a: { w: 97 }, b: { w: 98 } },
+    { id: 102, data: '15/07', hora: '', a: { w: 99 }, b: { w: 100 } },
+  ]},
+  { fase: 'final', titulo: 'Final', jogos: [
+    { id: 104, data: '19/07', hora: '', a: { w: 101 }, b: { w: 102 } },
+  ]},
+];
+function jogoMataInfo(id) { // dados do jogo das 16-avos (id 73-88) a partir do palpites_matamata
+  const fase = estado.matamata && estado.matamata.fases['16avos'];
+  const j = fase && (fase.jogos || []).find(x => String(x.id) === String(id));
+  return j || null;
+}
+const _chaveMatch = {};
+function chaveMatchById(id) {
+  if (Object.keys(_chaveMatch).length === 0) CHAVE.forEach(r => (r.jogos || []).forEach(j => _chaveMatch[j.id] = j));
+  return _chaveMatch[id];
+}
+function timeDoSlot(slot) { // retorna nome do time ou null
+  if (slot.fixed) return slot.fixed;
+  return vencedorJogo(slot.w);
+}
+function vencedorJogo(id) {
+  if (id >= 73 && id <= 88) { // 16-avos: times fixos
+    const j = jogoMataInfo(id); if (!j) return null;
+    const r = estado.parResultado[[norm(j.casa), norm(j.fora)].sort().join('|')];
+    return r ? r.winner : null;
+  }
+  const m = chaveMatchById(id); if (!m) return null;
+  const A = timeDoSlot(m.a), B = timeDoSlot(m.b); if (!A || !B) return null;
+  const r = estado.parResultado[[norm(A), norm(B)].sort().join('|')];
+  return r ? r.winner : null;
+}
+
 /* ---------- RENDER ---------- */
 function render() {
   const app = $('#app'); app.innerHTML = '';
-  ({ hoje: renderHoje, ranking: renderRanking, jogos: renderJogos, participante: renderParticipante, comparar: renderComparar, master: renderMaster, regras: renderRegras }[estado.aba] || renderHoje)(app);
+  ({ hoje: renderHoje, ranking: renderRanking, jogos: renderJogos, chave: renderChave, participante: renderParticipante, comparar: renderComparar, master: renderMaster, regras: renderRegras }[estado.aba] || renderHoje)(app);
 }
 
 function renderHoje(c) {
-  const hoje = hojeBR();
-  const lista = todosJogos().filter(j => j.data === hoje);
-  c.appendChild(el(`<div class="dia-h" style="margin-top:6px">🔥 Jogos de hoje · ${esc(hoje)}</div>`));
-  if (!lista.length) {
-    c.appendChild(el(`<div class="card" style="padding:30px;text-align:center"><div style="font-size:34px;margin-bottom:6px">📅</div><div class="muted">Nenhum jogo programado para hoje.</div></div>`));
-    const prox = todosJogos().filter(j => !resultadoDe(j) && !aoVivoDe(j))[0];
-    if (prox) { c.appendChild(el(`<div class="dia-h">Próximo jogo</div>`)); c.appendChild(blocoJogos([prox])); }
-    return;
-  }
+  const todos = todosJogos(), hoje = hojeBR();
+  const datas = [...new Set(todos.map(j => j.data))].filter(Boolean).sort((a, b) => dataKey(a) - dataKey(b));
+  let futuras = datas.filter(d => dataKey(d) >= dataKey(hoje));
+  if (!futuras.length) futuras = [hoje];
+  if (!estado.sel.dia || !futuras.includes(estado.sel.dia)) estado.sel.dia = futuras.includes(hoje) ? hoje : futuras[0];
+  const opts = futuras.map(d => `<option value="${d}" ${d === estado.sel.dia ? 'selected' : ''}>${rotuloData(d)}</option>`).join('');
+  c.appendChild(el(`<div class="card" style="padding:12px 14px"><div class="row2"><div>
+    <label class="small muted">Ver jogos de</label><select id="selDia">${opts}</select></div></div></div>`));
   c.appendChild(el(`<div class="small muted" style="margin:0 4px 8px">Toque em um jogo para ver o palpite de todos os participantes.</div>`));
-  // remove o dia-h duplicado do bloco (já temos cabeçalho); monta direto
-  const card = el(`<div class="card"></div>`);
-  lista.forEach(j => {
-    const res = resultadoDe(j), vivo = aoVivoDe(j);
-    let placar, pcls = 'placar', badge;
-    if (res) { placar = `${res.gc} <span class="muted">x</span> ${res.gf}`; badge = `<span class="badge fim">encerrado</span>`; }
-    else if (vivo) { placar = `${vivo.gc} <span class="muted">x</span> ${vivo.gf}`; pcls += ' vivo'; badge = `<span class="badge" style="color:var(--acc2)">🔴 ${esc(vivo.det)}</span>`; }
-    else { placar = '–'; pcls += ' aberto'; badge = `<span class="badge">${esc(j.hora || 'a definir')}</span>`; }
-    const top = topPalpite(j);
-    const maisP = top ? `<div class="mais-palpitado">🔮 Placar mais palpitado: <b>${top.pa} x ${top.pb}</b> <span class="muted">· ${top.n} de ${top.tot}</span></div>` : '';
-    const item = el(`<div class="jogo-item clicavel">
-      <div class="jogo"><div class="time casa">${esc(j.casa)}</div><div class="${pcls}">${placar}</div>
-      <div class="time fora">${esc(j.fora)}${j.mata ? ' <span class="badge mata">8/4</span>' : ''}</div></div>
-      <div class="jogo-meta">${badge} <span class="ver-todos">ver palpites de todos ›</span></div>
-      ${maisP}</div>`);
-    item.addEventListener('click', () => abrirJogo(j));
-    card.appendChild(item);
+  const box = el(`<div id="boxHoje"></div>`); c.appendChild(box);
+  const desenhar = () => {
+    const dia = $('#selDia').value; estado.sel.dia = dia; box.innerHTML = '';
+    const lista = todos.filter(j => j.data === dia).sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
+    if (!lista.length) { box.appendChild(el(`<div class="card" style="padding:30px;text-align:center"><div style="font-size:34px;margin-bottom:6px">📅</div><div class="muted">Nenhum jogo nesse dia.</div></div>`)); return; }
+    const card = el(`<div class="card"></div>`);
+    lista.forEach(j => {
+      const res = resultadoDe(j), vivo = aoVivoDe(j);
+      let placar, pcls = 'placar', badge;
+      if (res) { placar = `${res.gc} <span class="muted">x</span> ${res.gf}`; badge = `<span class="badge fim">encerrado</span>`; }
+      else if (vivo) { placar = `${vivo.gc} <span class="muted">x</span> ${vivo.gf}`; pcls += ' vivo'; badge = `<span class="badge" style="color:var(--acc2)">🔴 ${esc(vivo.det)}</span>`; }
+      else { placar = '–'; pcls += ' aberto'; badge = `<span class="badge">${esc(j.hora || 'a definir')}</span>`; }
+      const top = topPalpite(j);
+      const maisP = top ? `<div class="mais-palpitado">🔮 Placar mais palpitado: <b>${top.pa} x ${top.pb}</b> <span class="muted">· ${top.n} de ${top.tot}</span></div>` : '';
+      const hora = j.hora ? `<div class="jogo-hora">🕐 ${esc(j.hora)} <span class="muted">(Brasília)</span></div>` : '';
+      const item = el(`<div class="jogo-item clicavel">
+        ${hora}
+        <div class="jogo"><div class="time casa">${bandeira(j.casa)}${esc(j.casa)}</div><div class="${pcls}">${placar}</div>
+        <div class="time fora">${bandeira(j.fora)}${esc(j.fora)}${j.mata ? ' <span class="badge mata">8/4</span>' : ''}</div></div>
+        <div class="jogo-meta">${badge} <span class="ver-todos">ver palpites de todos ›</span></div>
+        ${maisP}</div>`);
+      item.addEventListener('click', () => abrirJogo(j));
+      card.appendChild(item);
+    });
+    box.appendChild(card);
+  };
+  $('#selDia').addEventListener('change', desenhar); desenhar();
+}
+
+const QUAD = (() => { const m = {}; [[74,77,73,75,89,90,97],[83,84,81,82,93,94,98],[76,78,79,80,91,92,99],[86,88,85,87,95,96,100]].forEach((a, qi) => a.forEach(id => m[id] = qi)); return m; })();
+const QUAD_LET = ['A', 'B', 'C', 'D'];
+function corMatch(id) { return id === 104 ? 'fin' : (id === 101 || id === 102) ? 'semi' : ('q' + QUAD[id]); }
+
+function renderChave(c) {
+  c.appendChild(el(`<div class="small muted" style="margin:6px 4px 8px">🗺️ Caminho até a final. As cores marcam as <b>4 chaves</b>: a vencedora de cada chave vai às quartas; depois <b>A × B</b> e <b>C × D</b> decidem as semifinais. Deslize para o lado ➡️</div>`));
+  c.appendChild(el(`<div class="chave-legenda">
+    <span class="lg q0">Chave A</span><span class="lg q1">Chave B</span>
+    <span class="lg q2">Chave C</span><span class="lg q3">Chave D</span>
+    <span class="lg-obs">A+B → Semifinal 1 · C+D → Semifinal 2</span></div>`));
+  const wrap = el(`<div class="bracket"></div>`);
+  CHAVE.forEach(rod => {
+    const col = el(`<div class="rnd"><div class="rnd-t">${esc(rod.titulo)}</div><div class="rnd-matches"></div></div>`);
+    const mc = col.querySelector('.rnd-matches');
+    const jogos = rod.fase === '16avos'
+      ? rod.ids.map(id => { const j = jogoMataInfo(id); return j ? { id, data: j.data, hora: j.hora, a: { fixed: j.casa }, b: { fixed: j.fora } } : null; }).filter(Boolean)
+      : rod.jogos;
+    jogos.forEach(j => {
+      const A = timeDoSlot(j.a), B = timeDoSlot(j.b), venc = vencedorJogo(j.id), q = QUAD[j.id];
+      const par = (A && B) ? estado.parResultado[[norm(A), norm(B)].sort().join('|')] : null;
+      const nomeA = A ? bandeira(A) + A : `Venc. J${j.a.w}`, nomeB = B ? bandeira(B) + B : `Venc. J${j.b.w}`;
+      const clsA = venc && A && norm(venc) === norm(A) ? 'venc' : '';
+      const clsB = venc && B && norm(venc) === norm(B) ? 'venc' : '';
+      const plA = par ? (par.casa === A ? par.gc : par.gf) : '', plB = par ? (par.casa === A ? par.gf : par.gc) : '';
+      const tag = (rod.fase === '16avos' || rod.fase === 'oitavas') && q !== undefined ? `<span class="bm-tag q${q}">${QUAD_LET[q]}</span>` : '';
+      mc.appendChild(el(`<div class="bm ${corMatch(j.id)}">
+        <div class="bm-h">${tag}J${j.id} · ${esc(j.data || '')}${j.hora ? ' ' + esc(j.hora) : ''}</div>
+        <div class="bm-l ${clsA} ${A ? '' : 'tbd'}"><span>${esc(nomeA)}</span>${par ? `<b class="bm-pl">${plA}</b>` : ''}</div>
+        <div class="bm-l ${clsB} ${B ? '' : 'tbd'}"><span>${esc(nomeB)}</span>${par ? `<b class="bm-pl">${plB}</b>` : ''}</div>
+      </div>`));
+    });
+    wrap.appendChild(col);
   });
-  c.appendChild(card);
+  c.appendChild(wrap);
 }
 
 function renderRanking(c) {
@@ -318,6 +457,7 @@ function renderRanking(c) {
   const desenhar = () => {
     const scope = sel.value; estado.sel.scope = scope; box.innerHTML = '';
     const r = rankingDe(scope);
+    const hojePts = pontosHoje();
     const totJogos = todosJogos().filter(j => resultadoDe(j) && (scope === 'consolidado' || j.faseKey === scope)).length;
     const lider = r.find(x => x.pts > 0) || r[0];
     const scopeLabel = scope === 'consolidado' ? 'todas as fases' : FASE_LABEL[scope];
@@ -337,7 +477,7 @@ function renderRanking(c) {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
       tb.appendChild(el(`<tr class="${i < 3 ? 'top' + (i+1) : ''}">
         <td class="pos">${i + 1}</td>
-        <td><div class="nome-cel"><span class="medal">${medal}</span>${esc(x.nome)}${x.camp ? ' 👑' : ''}${x.art ? ' ⚽' : ''}</div></td>
+        <td><div class="nome-cel"><span class="medal">${medal}</span><span class="nm">${esc(x.nome)}${x.camp ? ' 👑' : ''}${x.art ? ' ⚽' : ''}</span>${hojePts[x.nome] > 0 ? ` <span class="chip-hoje">+${hojePts[x.nome]} hoje</span>` : ''}</div></td>
         <td class="num">${x.exatos}</td><td class="num">${x.certos}</td><td class="num">${x.zeros}</td>
         <td class="pts">${x.pts}</td></tr>`));
     });
