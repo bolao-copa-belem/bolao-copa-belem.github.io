@@ -434,7 +434,7 @@ function renderHoje(c) {
         const cls = (v) => (!dist || v == null) ? '' : v === mn ? 'fav' : v === mx ? 'zebra' : '';
         const ico = (v) => (!dist || v == null) ? '' : v === mn ? ' ⭐' : v === mx ? ' 🦓' : '';
         const box = (v, lbl) => `<span class="odd ${cls(v)}"><small>${lbl}</small> <b>${v ?? '—'}</b>${ico(v)}</span>`;
-        oddsHtml = `<div class="odds-row"><span class="odds-lbl">💰 ${esc(od.prov)}</span>${box(od.casa, 'Casa')}${box(od.empate, 'Empate')}${box(od.fora, 'Visit.')}</div>
+        oddsHtml = `<div class="odds-row">${box(od.casa, 'Casa')}${box(od.empate, 'Empate')}${box(od.fora, 'Visit.')}</div>
         <div class="odds-nota">📌 Odds da casa de apostas ${esc(od.prov)} (somem quando o jogo começa). Servem apenas como parâmetro para avaliar os palpites do bolão.</div>`;
       }
       const item = el(`<div class="card jogo-card clicavel">
