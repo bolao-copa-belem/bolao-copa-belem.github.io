@@ -7,7 +7,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
 
 const estado = { jogos: [], palpites: [], resultados: { grupos: {}, master: {} }, matamata: null,
-  tabela: [], aba: 'hoje', aoVivo: {}, parResultado: {},
+  tabela: [], aba: 'hoje', aoVivo: {}, parResultado: {}, odds: {},
   sel: { p: null, a: null, b: null, scope: 'consolidado', dia: null } };
 
 const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719';
@@ -62,6 +62,21 @@ const FLAG = {
   'Colômbia':'🇨🇴','RD Congo':'🇨🇩','Inglaterra':'🏴󠁧󠁢󠁥󠁮󠁧󠁿','Croácia':'🇭🇷','Gana':'🇬🇭','Panamá':'🇵🇦',
 };
 const bandeira = (n) => FLAG[n] ? FLAG[n] + ' ' : '';
+
+// cor principal de cada seleção (para a barra de distribuição)
+const COR = {
+  'África do Sul':'#1a9e57','Canadá':'#e23b2e','Brasil':'#ffd400','Japão':'#1f5fd0','Catar':'#8d1b3d',
+  'Coreia do Sul':'#1763c9','Alemanha':'#ffce00','Paraguai':'#d52b1e','Holanda':'#ff7a1a','Marrocos':'#c1272d',
+  'Costa do Marfim':'#ff8a1e','Noruega':'#d24158','França':'#2a6fd6','Suécia':'#ffd84d','México':'#0a8a4f',
+  'Equador':'#ffd100','Inglaterra':'#e23b4d','RD Congo':'#3aa3ff','Bélgica':'#f3d02f','Senegal':'#1aa05a',
+  'Estados Unidos':'#4a6fd0','Bósnia e Herzegovina':'#ffd200','Espanha':'#d6303f','Áustria':'#d9dde3',
+  'Portugal':'#1f9d4d','Croácia':'#ff3b3b','Suíça':'#e23b2e','Argélia':'#1aa05a','Austrália':'#13a05a',
+  'Egito':'#e2384a','Argentina':'#7fb6ee','Cabo Verde':'#2f6fd0','Colômbia':'#ffcd00','Gana':'#1faf63',
+};
+const corTime = (n) => COR[n] || '#64748b';
+
+// odds americanas -> decimais (formato Betano/Bet365)
+function amerParaDec(a) { a = Number(a); if (!a) return null; return a > 0 ? +(1 + a / 100).toFixed(2) : +(1 + 100 / Math.abs(a)).toFixed(2); }
 
 /* ---------- pontuação ---------- */
 function pontos(palpite, res, mata) {
@@ -127,7 +142,7 @@ async function aplicarAoVivo() {
   try { const r = await fetch(ESPN_URL, { cache: 'no-store' }); if (!r.ok) return false; dados = await r.json(); }
   catch (e) { return false; }
   const eventos = (dados && dados.events) || [];
-  const idx = indicePares(); estado.aoVivo = {};
+  const idx = indicePares(); estado.aoVivo = {}; estado.odds = {};
   for (const e of eventos) {
     const tp = e.status && e.status.type; if (!tp) continue;
     const comp = e.competitions && e.competitions[0]; const cs = (comp && comp.competitors) || [];
@@ -146,6 +161,13 @@ async function aplicarAoVivo() {
     const gc = Number(casaEhHome ? home.score : away.score), gf = Number(casaEhHome ? away.score : home.score);
     if (Number.isNaN(gc) || Number.isNaN(gf)) continue;
     const refKey = ref.tipo === 'grupo' ? ref.chave : (ref.fase + '#' + ref.id);
+    // odds (DraftKings via ESPN) -> casa/empate/visitante em decimal
+    const oo = (comp.odds || []).find(x => x && x.moneyline);
+    if (oo) {
+      const ml = oo.moneyline, get = (s) => { const o = ml[s]; if (!o) return null; return amerParaDec((o.close && o.close.odds) || (o.open && o.open.odds)); };
+      const h = get('home'), a = get('away'), dr = get('draw');
+      if (h && a) estado.odds[refKey] = { casa: casaEhHome ? h : a, fora: casaEhHome ? a : h, empate: dr, prov: (oo.provider || {}).name || 'casa' };
+    }
     if (tp.state === 'in') estado.aoVivo[refKey] = { gc, gf, det: tp.shortDetail || 'ao vivo' };
     if (tp.state !== 'post') continue;
     if (ref.tipo === 'grupo') { estado.resultados.grupos[ref.chave] = Object.assign(estado.resultados.grupos[ref.chave] || {}, { gc, gf }); }
@@ -383,7 +405,6 @@ function renderHoje(c) {
     const dia = $('#selDia').value; estado.sel.dia = dia; box.innerHTML = '';
     const lista = todos.filter(j => j.data === dia).sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99'));
     if (!lista.length) { box.appendChild(el(`<div class="card" style="padding:30px;text-align:center"><div style="font-size:34px;margin-bottom:6px">📅</div><div class="muted">Nenhum jogo nesse dia.</div></div>`)); return; }
-    const card = el(`<div class="card"></div>`);
     lista.forEach(j => {
       const res = resultadoDe(j), vivo = aoVivoDe(j);
       let placar, pcls = 'placar', badge;
@@ -393,16 +414,38 @@ function renderHoje(c) {
       const top = topPalpite(j);
       const maisP = top ? `<div class="mais-palpitado">🔮 Placar mais palpitado: <b>${top.pa} x ${top.pb}</b> <span class="muted">· ${top.n} de ${top.tot}</span></div>` : '';
       const hora = j.hora ? `<div class="jogo-hora">🕐 ${esc(j.hora)} <span class="muted">(Brasília)</span></div>` : '';
-      const item = el(`<div class="jogo-item clicavel">
+      // distribuição: vitória casa / empate / vitória visitante
+      let dc = 0, de = 0, df = 0, dt = 0;
+      estado.palpites.forEach(p => { const pal = palpiteDe(p.nome, j); if (!pal) return; dt++; if (pal[0] > pal[1]) dc++; else if (pal[0] < pal[1]) df++; else de++; });
+      let barra = '';
+      if (dt) {
+        const pc = Math.round(dc / dt * 100), pe = Math.round(de / dt * 100), pf = 100 - pc - pe;
+        const cc = corTime(j.casa), cf = corTime(j.fora);
+        barra = `<div class="dist-wrap">
+          <div class="dist-bar"><i style="width:${pc}%;background:${cc}"></i><i class="emp" style="width:${pe}%"></i><i style="width:${pf}%;background:${cf}"></i></div>
+          <div class="dist-leg"><span style="color:${cc}">${bandeira(j.casa)}Casa ${pc}%</span><span class="muted">Empate ${pe}%</span><span style="color:${cf}">Fora ${pf}% ${bandeira(j.fora)}</span></div>
+        </div>`;
+      }
+      const od = estado.odds[j.mata ? (j.fase + '#' + j.id) : chaveJogo(j)];
+      let oddsHtml = '';
+      if (od) {
+        const nums = [od.casa, od.empate, od.fora].filter(v => v != null);
+        const mn = Math.min(...nums), mx = Math.max(...nums), dist = mn !== mx;
+        const cls = (v) => (!dist || v == null) ? '' : v === mn ? 'fav' : v === mx ? 'zebra' : '';
+        const ico = (v) => (!dist || v == null) ? '' : v === mn ? ' ⭐' : v === mx ? ' 🦓' : '';
+        const box = (v, lbl) => `<span class="odd ${cls(v)}"><small>${lbl}</small> <b>${v ?? '—'}</b>${ico(v)}</span>`;
+        oddsHtml = `<div class="odds-row"><span class="odds-lbl">💰 ${esc(od.prov)}</span>${box(od.casa, 'Casa')}${box(od.empate, 'Empate')}${box(od.fora, 'Visit.')}</div>
+        <div class="odds-nota">📌 Odds da casa de apostas ${esc(od.prov)} (somem quando o jogo começa). Servem apenas como parâmetro para avaliar os palpites do bolão.</div>`;
+      }
+      const item = el(`<div class="card jogo-card clicavel">
         ${hora}
         <div class="jogo"><div class="time casa">${bandeira(j.casa)}${esc(j.casa)}</div><div class="${pcls}">${placar}</div>
         <div class="time fora">${bandeira(j.fora)}${esc(j.fora)}${j.mata ? ' <span class="badge mata">8/4</span>' : ''}</div></div>
         <div class="jogo-meta">${badge} <span class="ver-todos">ver palpites de todos ›</span></div>
-        ${maisP}</div>`);
+        ${maisP}${barra}${oddsHtml}</div>`);
       item.addEventListener('click', () => abrirJogo(j));
-      card.appendChild(item);
+      box.appendChild(item);
     });
-    box.appendChild(card);
   };
   $('#selDia').addEventListener('change', desenhar); desenhar();
 }

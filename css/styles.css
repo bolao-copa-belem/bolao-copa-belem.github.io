@@ -71,6 +71,10 @@ tr.top1 td.pos,tr.top2 td.pos,tr.top3 td.pos{color:var(--gold);font-weight:700}
 .jogo-meta{text-align:center;padding:2px 0 4px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
 .jogo-item.clicavel{cursor:pointer;transition:background .12s}
 .jogo-item.clicavel:hover{background:rgba(255,255,255,.03)}
+/* cada jogo como card separado (aba Hoje) */
+.jogo-card{padding:8px 0 8px;margin-bottom:16px}
+.jogo-card.clicavel{cursor:pointer;transition:border-color .12s,box-shadow .12s}
+.jogo-card.clicavel:hover{border-color:var(--acc)}
 .ver-todos{font-size:11.5px;color:var(--acc2);opacity:.85}
 
 /* overlay / modal */
@@ -100,6 +104,28 @@ tr.top1 td.pos,tr.top2 td.pos,tr.top3 td.pos{color:var(--gold);font-weight:700}
 /* linha "mais palpitado" na aba Hoje */
 .mais-palpitado{text-align:center;font-size:12.5px;color:var(--mut);padding:6px 14px 2px;border-top:1px dashed var(--line);margin-top:6px}
 .mais-palpitado b{color:var(--acc2);font-variant-numeric:tabular-nums}
+
+/* odds (aba Hoje) */
+.odds-row{display:flex;align-items:center;gap:6px;padding:6px 14px 2px;flex-wrap:wrap}
+.odds-lbl{font-size:10.5px;color:var(--mut);font-weight:600;margin-right:1px}
+.odds-row .odd{display:inline-flex;align-items:baseline;gap:4px;background:var(--bg2);border:1px solid var(--line);
+  border-radius:7px;padding:2px 8px}
+.odds-row .odd small{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px}
+.odds-row .odd b{font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--txt)}
+.odds-row .odd.fav{border-color:rgba(16,185,129,.6);background:rgba(16,185,129,.12)}
+.odds-row .odd.fav b{color:var(--acc2)}
+.odds-row .odd.zebra{border-color:rgba(245,200,75,.55);background:rgba(245,200,75,.1)}
+.odds-row .odd.zebra b{color:var(--gold)}
+
+.odds-nota{font-size:10px;color:var(--mut);line-height:1.4;padding:4px 14px 2px;font-style:italic}
+
+/* barra de distribuição (aba Hoje) */
+.dist-wrap{padding:8px 14px 4px}
+.dist-bar{display:flex;height:11px;border-radius:999px;overflow:hidden;background:var(--bg2);border:1px solid var(--line)}
+.dist-bar i{display:block;height:100%}
+.dist-bar i.emp{background:#5b6675}
+.dist-leg{display:flex;justify-content:space-between;gap:8px;margin-top:5px;font-size:11.5px;font-weight:600;flex-wrap:wrap}
+.dist-leg .muted{font-weight:500}
 
 /* barras Master */
 .barrow{display:grid;grid-template-columns:130px 1fr 30px;align-items:center;gap:10px;padding:5px 0}
