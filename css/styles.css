@@ -52,10 +52,30 @@ table.rank th,table.rank td{padding:11px 12px;text-align:left;border-bottom:1px 
 table.rank th{color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:600}
 table.rank td.pos{width:40px;text-align:center;color:var(--mut);font-variant-numeric:tabular-nums}
 table.rank td.pts{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:var(--acc2)}
-table.rank th.num,table.rank td.num{text-align:center;font-variant-numeric:tabular-nums;color:var(--mut);width:42px;padding-left:4px;padding-right:4px}
+table.rank th.num,table.rank td.num{text-align:center;font-variant-numeric:tabular-nums;color:var(--mut);width:46px;padding-left:4px;padding-right:4px}
 table.rank th.num{font-size:10.5px}
 table.rank tr:hover td{background:rgba(255,255,255,.02)}
-@media(max-width:430px){table.rank th,table.rank td{padding-left:7px;padding-right:7px;font-size:13px}table.rank th.num,table.rank td.num{width:34px}}
+
+/* colunas congeladas + rolagem horizontal */
+.rank-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.rank{min-width:600px}
+table.rank td.pos,table.rank th.pos{position:sticky;left:0;z-index:2;background:var(--card2);width:34px}
+table.rank td.nm-col,table.rank th.nm-col{position:sticky;left:34px;z-index:2;background:var(--card2);
+  box-shadow:8px 0 9px -6px rgba(0,0,0,.6)}
+table.rank tr:hover td.pos,table.rank tr:hover td.nm-col{background:var(--card2)}
+.nome-cel .nm{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+table.rank td.pts{text-align:center;font-weight:800;color:var(--acc2);font-variant-numeric:tabular-nums}
+/* variação do dia */
+td.dia{line-height:1.05}
+.mov{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums}
+.mov.up{color:var(--acc2)} .mov.down{color:var(--red)} .mov.eq{color:var(--mut);font-weight:600}
+.hoje-pt{display:block;font-size:9px;color:var(--mut);font-weight:600}
+/* forma — últimos 5 */
+.forma-h{text-align:center;font-size:10.5px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+td.forma{text-align:center;white-space:nowrap}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin:0 1.5px;background:#3a4760}
+.dot.d-ex{background:var(--acc)} .dot.d-ac{background:var(--gold)} .dot.d-er{background:var(--red)}
+@media(max-width:430px){table.rank th,table.rank td{padding-left:7px;padding-right:7px;font-size:13px}table.rank th.num,table.rank td.num{width:40px}.nome-cel .nm{max-width:120px}}
 .hide-sm{display:none}@media(min-width:620px){.hide-sm{display:inline}}
 .medal{font-size:16px}
 tr.top1 td.pos,tr.top2 td.pos,tr.top3 td.pos{color:var(--gold);font-weight:700}

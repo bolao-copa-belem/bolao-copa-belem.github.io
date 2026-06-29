@@ -231,6 +231,30 @@ function contagem(getter, canon) {
   return Object.values(m).sort((a, b) => b.n - a.n || a.label.localeCompare(b.label, 'pt-BR'));
 }
 
+// stats de um participante numa fase, podendo ignorar jogos de uma data (p/ variação do dia)
+function statsScope(p, scope, skipDate) {
+  const a = novoAcc();
+  if (scope === 'consolidado' || scope === 'grupos')
+    estado.jogos.forEach((g, i) => { if (skipDate && g.data === skipDate) return; somar(a, pontos(p.p[i], estado.resultados.grupos[chaveJogo(g)], false), 5); });
+  if (estado.matamata) for (const fk of ORDEM_MATA) {
+    if (scope !== 'consolidado' && scope !== fk) continue;
+    const fase = estado.matamata.fases[fk]; if (!fase || !(fase.jogos || []).length) continue;
+    fase.jogos.forEach(j => { if (skipDate && j.data === skipDate) return; const pal = (fase.palpites && fase.palpites[p.nome]) ? fase.palpites[p.nome][String(j.id)] : null; somar(a, pontos(pal, fase.resultados && fase.resultados[String(j.id)], true), 8); });
+  }
+  if (scope === 'consolidado') {
+    const m = estado.resultados.master || {}, campOK = m.campeao ? norm(m.campeao) : null;
+    const artL = Array.isArray(m.artilheiro) ? m.artilheiro.map(canonArt) : (m.artilheiro ? [canonArt(m.artilheiro)] : []);
+    if (campOK && norm(p.campeao) === campOK) a.pts += 5;
+    if (artL.length && artL.includes(canonArt(p.artilheiro))) a.pts += 5;
+  }
+  return a;
+}
+function posicoesScope(scope, skipDate) {
+  const arr = estado.palpites.map(p => ({ nome: p.nome, ...statsScope(p, scope, skipDate) }))
+    .sort((a, b) => b.pts - a.pts || b.exatos - a.exatos || a.zeros - b.zeros || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const pos = {}; arr.forEach((x, i) => pos[x.nome] = i + 1); return pos;
+}
+
 /* ---------- detalhe de um jogo: palpites de todos ---------- */
 function abrirJogo(j) {
   const res = resultadoDe(j), vivo = aoVivoDe(j), exato = j.mata ? 8 : 5;
@@ -501,7 +525,11 @@ function renderRanking(c) {
     const scope = sel.value; estado.sel.scope = scope; box.innerHTML = '';
     const r = rankingDe(scope);
     const hojePts = pontosHoje();
-    const totJogos = todosJogos().filter(j => resultadoDe(j) && (scope === 'consolidado' || j.faseKey === scope)).length;
+    const posAntes = posicoesScope(scope, hojeBR());
+    const resolvidos = todosJogos().filter(j => resultadoDe(j) && (scope === 'consolidado' || j.faseKey === scope))
+      .sort((a, b) => (dataKey(a.data) - dataKey(b.data)) || ((a.hora || '').localeCompare(b.hora || '')));
+    const ult5 = resolvidos.slice(-5);
+    const totJogos = resolvidos.length;
     const lider = r.find(x => x.pts > 0) || r[0];
     const scopeLabel = scope === 'consolidado' ? 'todas as fases' : FASE_LABEL[scope];
     box.appendChild(el(`<div class="resumo-dia">
@@ -510,22 +538,29 @@ function renderRanking(c) {
       ${lider && lider.pts > 0 ? `<div class="pill">👑 Líder: <b>${esc(lider.nome)}</b> · ${lider.pts} pts</div>` : ''}
     </div>`));
     const card = el(`<div class="card"><div class="card-h"><span>🏅 Ranking · <span class="muted">${scopeLabel}</span></span>
-      <span class="small muted hide-sm">desempate: exatos › menos zeros › campeão › artilheiro</span></div></div>`);
+      <span class="small muted hide-sm">➡️ deslize para ver mais colunas</span></div><div class="rank-scroll"></div></div>`);
     const tbl = el(`<table class="rank"><thead><tr>
-      <th class="pos">#</th><th>Participante</th>
+      <th class="pos">#</th><th class="nm-col">Participante</th>
+      <th class="num">Pts</th><th class="num">Dia</th>
       <th class="num">Exa</th><th class="num">Ven</th><th class="num">Zero</th>
-      <th style="text-align:right">Pts</th></tr></thead><tbody></tbody></table>`);
+      <th class="forma-h">Últimos 5</th></tr></thead><tbody></tbody></table>`);
     const tb = tbl.querySelector('tbody');
     r.forEach((x, i) => {
       const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-      tb.appendChild(el(`<tr class="${i < 3 ? 'top' + (i+1) : ''}">
-        <td class="pos">${i + 1}</td>
-        <td><div class="nome-cel"><span class="medal">${medal}</span><span class="nm">${esc(x.nome)}${x.camp ? ' 👑' : ''}${x.art ? ' ⚽' : ''}</span>${hojePts[x.nome] > 0 ? ` <span class="chip-hoje">+${hojePts[x.nome]} hoje</span>` : ''}</div></td>
+      const posNow = i + 1, mov = (posAntes[x.nome] || posNow) - posNow;
+      const movHtml = mov > 0 ? `<span class="mov up">▲${mov}</span>` : mov < 0 ? `<span class="mov down">▼${-mov}</span>` : `<span class="mov eq">=</span>`;
+      const hp = hojePts[x.nome] || 0;
+      const dots = ult5.map(g => { const pt = pontos(palpiteDe(x.nome, g), resultadoDe(g), g.mata); const cls = pt == null ? 'd-na' : pt === (g.mata ? 8 : 5) ? 'd-ex' : pt > 0 ? 'd-ac' : 'd-er'; return `<i class="dot ${cls}" title="${esc(g.casa)} x ${esc(g.fora)}"></i>`; }).join('');
+      tb.appendChild(el(`<tr class="${i < 3 ? 'top' + (i + 1) : ''}">
+        <td class="pos">${posNow}</td>
+        <td class="nm-col"><div class="nome-cel"><span class="medal">${medal}</span><span class="nm">${esc(x.nome)}${x.camp ? ' 👑' : ''}${x.art ? ' ⚽' : ''}</span></div></td>
+        <td class="num pts">${x.pts}</td>
+        <td class="num dia">${movHtml}${hp > 0 ? `<span class="hoje-pt">+${hp}</span>` : ''}</td>
         <td class="num">${x.exatos}</td><td class="num">${x.certos}</td><td class="num">${x.zeros}</td>
-        <td class="pts">${x.pts}</td></tr>`));
+        <td class="forma">${dots || '<span class="muted small">—</span>'}</td></tr>`));
     });
-    card.appendChild(tbl); box.appendChild(card);
-    box.appendChild(el(`<div class="small muted" style="padding:4px 6px">Exa = placares exatos · Ven = acertou o vencedor · Zero = jogos sem pontos.</div>`));
+    card.querySelector('.rank-scroll').appendChild(tbl); box.appendChild(card);
+    box.appendChild(el(`<div class="small muted" style="padding:6px">Dia = variação de posição hoje (+pts ganhos) · Exa = placar exato · Ven = só o vencedor · Zero = sem pontos · Últimos 5: 🟢 exato 🟡 vencedor 🔴 erro</div>`));
   };
   sel.addEventListener('change', desenhar); desenhar();
 }
