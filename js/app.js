@@ -78,7 +78,7 @@ async function carregar() {
     fetch('data/jogos.json').then(r => r.json()),
     fetch('data/palpites.json').then(r => r.json()),
     fetch('data/resultados.json?_=' + Date.now()).then(r => r.json()),
-    fetch('data/palpites_matamata.json').then(r => r.json()).catch(() => null),
+    fetch('data/palpites_matamata.json?_=' + Date.now()).then(r => r.json()).catch(() => null),
   ]);
   estado.jogos = jogos; estado.palpites = palpites; estado.resultados = resultados; estado.matamata = matamata;
 }
