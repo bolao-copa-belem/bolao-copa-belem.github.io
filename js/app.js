@@ -421,7 +421,7 @@ const CHAVE = [
   ]},
   { fase: 'semis', titulo: 'Semifinais', jogos: [
     { id: 101, data: '14/07', hora: '16:00', a: { w: 97 }, b: { w: 98 } },
-    { id: 102, data: '15/07', hora: '', a: { w: 99 }, b: { w: 100 } },
+    { id: 102, data: '15/07', hora: '16:00', a: { w: 99 }, b: { w: 100 } },
   ]},
   { fase: 'final', titulo: 'Final', jogos: [
     { id: 104, data: '19/07', hora: '', a: { w: 101 }, b: { w: 102 } },
