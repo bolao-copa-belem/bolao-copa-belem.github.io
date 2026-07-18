@@ -5420,14 +5420,392 @@
     },
     "terceiro": {
       "aberta": false,
-      "jogos": [],
-      "palpites": {},
+      "jogos": [
+        {
+          "id": 103,
+          "data": "18/07",
+          "hora": "18:00",
+          "casa": "França",
+          "fora": "Inglaterra"
+        }
+      ],
+      "palpites": {
+        "Matheus Ribeiro": {
+          "103": [
+            1,
+            0
+          ]
+        },
+        "Rodrigo Lobato": {
+          "103": [
+            2,
+            0
+          ]
+        },
+        "Abraao Benassuly Júnior": {
+          "103": [
+            2,
+            1
+          ]
+        },
+        "Matheus Hollanda": {
+          "103": [
+            2,
+            3
+          ]
+        },
+        "Gabriel Queiroz": {
+          "103": [
+            3,
+            1
+          ]
+        },
+        "Fernando Almeida": {
+          "103": [
+            3,
+            1
+          ]
+        },
+        "Jaison Junior": {
+          "103": [
+            3,
+            2
+          ]
+        },
+        "Victor Nóvoa": {
+          "103": [
+            3,
+            2
+          ]
+        },
+        "Attilio Lima": {
+          "103": [
+            3,
+            1
+          ]
+        },
+        "Loro Fernandez": {
+          "103": [
+            2,
+            1
+          ]
+        },
+        "Lauro Alexandrino": {
+          "103": [
+            2,
+            0
+          ]
+        },
+        "Fabio Goes Koury": {
+          "103": [
+            2,
+            2
+          ]
+        },
+        "José Vitor Pereira": {
+          "103": [
+            1,
+            1
+          ]
+        },
+        "Harold Haber": {
+          "103": [
+            2,
+            0
+          ]
+        },
+        "Marcelo Gaspar Garcia": {
+          "103": [
+            3,
+            1
+          ]
+        },
+        "Murilo Mizzerani": {
+          "103": [
+            1,
+            2
+          ]
+        },
+        "Sahid Xerfan": {
+          "103": [
+            3,
+            1
+          ]
+        },
+        "André Colino": {
+          "103": [
+            3,
+            0
+          ]
+        },
+        "Wagner Olaya": {
+          "103": [
+            3,
+            0
+          ]
+        },
+        "Marcel Caetano": {
+          "103": [
+            2,
+            0
+          ]
+        },
+        "Weslhey Alves": {
+          "103": [
+            2,
+            2
+          ]
+        },
+        "Angelo Scotta": {
+          "103": [
+            1,
+            1
+          ]
+        },
+        "Felipe Maues": {
+          "103": [
+            3,
+            1
+          ]
+        },
+        "Caio Feijó": {
+          "103": [
+            1,
+            0
+          ]
+        },
+        "Victor Meira": {
+          "103": [
+            1,
+            2
+          ]
+        },
+        "Elvira Colino": {
+          "103": [
+            2,
+            1
+          ]
+        },
+        "Matheus Bonna": {
+          "103": [
+            0,
+            2
+          ]
+        },
+        "Antonio Nunes": {
+          "103": [
+            3,
+            1
+          ]
+        },
+        "Thomas Cardoso": {
+          "103": [
+            2,
+            0
+          ]
+        },
+        "Theo Ribeiro": {
+          "103": [
+            2,
+            0
+          ]
+        }
+      },
       "resultados": {}
     },
     "final": {
       "aberta": false,
-      "jogos": [],
-      "palpites": {},
+      "jogos": [
+        {
+          "id": 104,
+          "data": "19/07",
+          "hora": "16:00",
+          "casa": "Espanha",
+          "fora": "Argentina"
+        }
+      ],
+      "palpites": {
+        "Matheus Ribeiro": {
+          "104": [
+            1,
+            2
+          ]
+        },
+        "Rodrigo Lobato": {
+          "104": [
+            1,
+            2
+          ]
+        },
+        "Abraao Benassuly Júnior": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "Matheus Hollanda": {
+          "104": [
+            2,
+            0
+          ]
+        },
+        "Gabriel Queiroz": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "Fernando Almeida": {
+          "104": [
+            1,
+            0
+          ]
+        },
+        "Jaison Junior": {
+          "104": [
+            3,
+            2
+          ]
+        },
+        "Victor Nóvoa": {
+          "104": [
+            1,
+            2
+          ]
+        },
+        "Attilio Lima": {
+          "104": [
+            3,
+            1
+          ]
+        },
+        "Loro Fernandez": {
+          "104": [
+            1,
+            1
+          ]
+        },
+        "Lauro Alexandrino": {
+          "104": [
+            2,
+            0
+          ]
+        },
+        "Fabio Goes Koury": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "José Vitor Pereira": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "Harold Haber": {
+          "104": [
+            1,
+            1
+          ]
+        },
+        "Marcelo Gaspar Garcia": {
+          "104": [
+            2,
+            0
+          ]
+        },
+        "Murilo Mizzerani": {
+          "104": [
+            2,
+            3
+          ]
+        },
+        "Sahid Xerfan": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "André Colino": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "Wagner Olaya": {
+          "104": [
+            2,
+            3
+          ]
+        },
+        "Marcel Caetano": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "Weslhey Alves": {
+          "104": [
+            1,
+            0
+          ]
+        },
+        "Angelo Scotta": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "Felipe Maues": {
+          "104": [
+            2,
+            1
+          ]
+        },
+        "Caio Feijó": {
+          "104": [
+            2,
+            2
+          ]
+        },
+        "Victor Meira": {
+          "104": [
+            1,
+            0
+          ]
+        },
+        "Elvira Colino": {
+          "104": [
+            2,
+            2
+          ]
+        },
+        "Matheus Bonna": {
+          "104": [
+            3,
+            1
+          ]
+        },
+        "Antonio Nunes": {
+          "104": [
+            3,
+            2
+          ]
+        },
+        "Thomas Cardoso": {
+          "104": [
+            2,
+            0
+          ]
+        },
+        "Theo Ribeiro": {
+          "104": [
+            1,
+            1
+          ]
+        }
+      },
       "resultados": {}
     }
   }
