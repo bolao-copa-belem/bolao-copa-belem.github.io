@@ -424,7 +424,7 @@ const CHAVE = [
     { id: 102, data: '15/07', hora: '16:00', a: { w: 99 }, b: { w: 100 } },
   ]},
   { fase: 'final', titulo: 'Final', jogos: [
-    { id: 104, data: '19/07', hora: '', a: { w: 101 }, b: { w: 102 } },
+    { id: 104, data: '19/07', hora: '16:00', a: { w: 101 }, b: { w: 102 } },
   ]},
 ];
 function jogoMataInfo(id) { // dados do jogo das 16-avos (id 73-88) a partir do palpites_matamata
