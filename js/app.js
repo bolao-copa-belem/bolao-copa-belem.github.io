@@ -344,6 +344,72 @@ function abrirJogo(j) {
   document.body.appendChild(ov);
 }
 
+/* palpites master em formato de jogo, com detalhe participante por participante */
+function abrirPalpitesMaster(tipo) {
+  const campeao = tipo === 'campeao';
+  const titulo = campeao ? 'Campeão da Copa' : 'Artilheiro da Copa';
+  const emoji = campeao ? '👑' : '⚽';
+  const master = estado.resultados.master || {};
+  const resultado = master[tipo];
+  const resultadoLista = Array.isArray(resultado) ? resultado : (resultado ? [resultado] : []);
+  const resultadoCanon = resultadoLista.map(x => campeao ? norm(x) : canonArt(x));
+  const linhas = estado.palpites.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(p => {
+    const bruto = p[tipo] || '—';
+    const exibido = campeao ? bruto : canonArtLabel(bruto);
+    const acertou = resultadoCanon.length && resultadoCanon.includes(campeao ? norm(bruto) : canonArt(bruto));
+    return `<div class="grp"><div class="grp-h" style="margin-bottom:0">
+      <span class="grp-nomes" style="flex:1">${esc(p.nome)}</span>
+      <span class="placar-mini${acertou ? ' pt5' : ''}">${esc(exibido)}</span>
+      ${acertou ? '<span class="ppt pt5">+5</span>' : ''}
+    </div></div>`;
+  }).join('');
+  const apuracao = resultadoLista.length
+    ? `<div class="dist" style="padding:10px 16px">✅ Resultado oficial: <b>${esc(resultadoLista.map(x => campeao ? x : canonArtLabel(x)).join(' / '))}</b></div>`
+    : '<div class="dist" style="padding:10px 16px">⏳ Aguardando a apuração oficial.</div>';
+  const ov = el(`<div class="overlay"><div class="modal">
+    <div class="modal-h"><div><div style="font-weight:700">${emoji} Palpites de ${esc(titulo.toLowerCase())}</div>
+      <div class="small muted">${estado.palpites.length} participantes · vale 5 pontos</div></div>
+      <button class="x" aria-label="Fechar">✕</button></div>
+    ${apuracao}
+    <div class="dist" style="padding:2px 16px 8px;color:var(--mut)">Escolha de cada participante:</div>
+    ${linhas}
+  </div></div>`);
+  const fechar = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) fechar(); });
+  ov.querySelector('.x').addEventListener('click', fechar);
+  document.body.appendChild(ov);
+}
+
+function cardsMasterHoje() {
+  const frag = document.createDocumentFragment();
+  const master = estado.resultados.master || {};
+  [
+    { tipo: 'campeao', titulo: 'Campeão', emoji: '👑', lista: contagem(p => p.campeao), resultado: master.campeao },
+    { tipo: 'artilheiro', titulo: 'Artilheiro', emoji: '⚽', lista: contagem(p => p.artilheiro, canonArtLabel), resultado: master.artilheiro },
+  ].forEach(info => {
+    const total = info.lista.reduce((s, x) => s + x.n, 0);
+    const top = info.lista[0];
+    const resultadoLista = Array.isArray(info.resultado) ? info.resultado : (info.resultado ? [info.resultado] : []);
+    const resultadoLabel = resultadoLista.map(x => info.tipo === 'campeao' ? x : canonArtLabel(x)).join(' / ');
+    const card = el(`<div class="card jogo-card clicavel" role="button" tabindex="0" aria-label="Ver palpites de ${esc(info.titulo.toLowerCase())}">
+      <div class="jogo-hora">⭐ Palpite master <span class="muted">· vale 5 pontos</span></div>
+      <div class="jogo">
+        <div class="time casa">${info.emoji} ${esc(info.titulo)}</div>
+        <div class="placar ${resultadoLista.length ? 'vivo' : 'aberto'}">${resultadoLista.length ? '✓' : '–'}</div>
+        <div class="time fora">${resultadoLista.length ? esc(resultadoLabel) : `${total} palpites`}</div>
+      </div>
+      <div class="jogo-meta"><span class="badge${resultadoLista.length ? ' fim' : ''}">${resultadoLista.length ? 'apurado' : 'a apurar'}</span>
+        <span class="ver-todos">ver escolha de todos ›</span></div>
+      ${top ? `<div class="mais-palpitado">🔮 Mais escolhido: <b>${esc(top.label)}</b> <span class="muted">· ${top.n} de ${total}</span></div>` : ''}
+    </div>`);
+    const abrir = () => abrirPalpitesMaster(info.tipo);
+    card.addEventListener('click', abrir);
+    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } });
+    frag.appendChild(card);
+  });
+  return frag;
+}
+
 /* ---------- montagem de lista de jogos (clicável) ---------- */
 function blocoJogos(lista) {
   const frag = document.createDocumentFragment();
@@ -515,6 +581,7 @@ function renderHoje(c) {
       item.addEventListener('click', () => abrirJogo(j));
       box.appendChild(item);
     });
+    if (dia === '19/07') box.appendChild(cardsMasterHoje());
   };
   $('#selDia').addEventListener('change', desenhar); desenhar();
 }
