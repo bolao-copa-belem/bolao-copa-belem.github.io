@@ -3,10 +3,10 @@
   "config": {
     "pagantes": 42
   },
-  "atualizado_em": "28/06/2026 07:14",
+  "atualizado_em": "19/07/2026 20:15",
   "master": {
-    "campeao": null,
-    "artilheiro": null,
+    "campeao": "Espanha",
+    "artilheiro": "Mbappé",
     "_obs": "artilheiro pode ser string ou lista de nomes em caso de empate"
   },
   "grupos": {
