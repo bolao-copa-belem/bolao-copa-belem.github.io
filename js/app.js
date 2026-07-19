@@ -391,8 +391,12 @@ function cardsMasterHoje() {
     const top = info.lista[0];
     const resultadoLista = Array.isArray(info.resultado) ? info.resultado : (info.resultado ? [info.resultado] : []);
     const resultadoLabel = resultadoLista.map(x => info.tipo === 'campeao' ? x : canonArtLabel(x)).join(' / ');
+    const resultadoCanon = resultadoLista.map(x => info.tipo === 'campeao' ? norm(x) : canonArt(x));
+    const acertos = resultadoLista.length ? estado.palpites.filter(p => resultadoCanon.includes(
+      info.tipo === 'campeao' ? norm(p.campeao) : canonArt(p.artilheiro)
+    )).length : 0;
     const card = el(`<div class="card jogo-card clicavel" role="button" tabindex="0" aria-label="Ver palpites de ${esc(info.titulo.toLowerCase())}">
-      <div class="jogo-hora">⭐ Palpite master <span class="muted">· vale 5 pontos</span></div>
+      <div class="jogo-hora">⭐ Palpite master <span class="muted">· 5 pts por acerto</span></div>
       <div class="jogo">
         <div class="time casa">${info.emoji} ${esc(info.titulo)}</div>
         <div class="placar ${resultadoLista.length ? 'vivo' : 'aberto'}">${resultadoLista.length ? '✓' : '–'}</div>
@@ -400,7 +404,9 @@ function cardsMasterHoje() {
       </div>
       <div class="jogo-meta"><span class="badge${resultadoLista.length ? ' fim' : ''}">${resultadoLista.length ? 'apurado' : 'a apurar'}</span>
         <span class="ver-todos">ver escolha de todos ›</span></div>
-      ${top ? `<div class="mais-palpitado">🔮 Mais escolhido: <b>${esc(top.label)}</b> <span class="muted">· ${top.n} de ${total}</span></div>` : ''}
+      ${resultadoLista.length
+        ? `<div class="mais-palpitado">✅ <b>${acertos} de ${total}</b> acertaram <span class="pt5">· +5 pts cada</span></div>`
+        : (top ? `<div class="mais-palpitado">🔮 Mais escolhido: <b>${esc(top.label)}</b> <span class="muted">· ${top.n} de ${total}</span></div>` : '')}
     </div>`);
     const abrir = () => abrirPalpitesMaster(info.tipo);
     card.addEventListener('click', abrir);
