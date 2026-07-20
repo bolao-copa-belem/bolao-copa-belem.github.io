@@ -27,7 +27,9 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    # Ubuntu-hosted runners were unavailable on 2026-07-19; macOS keeps the
+    # Pages deployment independent of that runner pool.
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
